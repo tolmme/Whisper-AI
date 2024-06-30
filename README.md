@@ -1,12 +1,13 @@
-## Whisper AI Transcription Project
+# Whisper AI Transcription Project
 
-This project utilizes OpenAI's Whisper to transcribe audio files. It provides a simple interface for selecting audio files and choosing the desired Whisper model for transcription. The project calculates the audio duration and transcription time, and saves the transcriptions to text files with descriptive filenames.
+This project utilizes OpenAI's Whisper to transcribe audio files. It now supports batch processing, allowing users to transcribe multiple files at once and providing real-time updates on the transcription progress.
 
-### Features
-- User-friendly file selection and model choice interface
-- Transcription of audio files using OpenAI's Whisper models
-- Calculation of audio duration and transcription time
-- Saving transcriptions to text files with detailed filenames
+## Features
+- User-friendly interface for selecting multiple audio files for transcription.
+- Transcription of audio files using various Whisper models.
+- Real-time progress updates during transcription, indicating the number of files processed and remaining.
+- Calculation of audio duration and transcription time.
+- Saving transcriptions to text files with detailed filenames.
 
 ### Requirements
 - Python 3.x
@@ -40,9 +41,10 @@ This project utilizes OpenAI's Whisper to transcribe audio files. It provides a 
 
 2. Follow the on-screen instructions to select an audio file and choose a Whisper model.
 
+### Batch Transcription
+
+- The application now supports selecting multiple audio files for simultaneous transcription.
+- Users will receive progress updates after each file is processed, which helps in tracking the transcription status especially when dealing with large batches of audio files.
+
 ### License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-You can include this description in your `README.md` file on GitHub to provide an overview of your project.
