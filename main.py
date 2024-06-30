@@ -7,15 +7,15 @@ import tkinter as tk
 from tkinter import filedialog
 
 
-def select_file():
-    print("Please choose a file to transcribe")
+def select_files():
+    print("Please choose one or several files to transcribe")
     root = tk.Tk()
     root.withdraw()  # Hide the root window
-    file_path = filedialog.askopenfilename(title="Select an audio file",
-                                           filetypes=[("Audio Files", "*.mp3 *.wav *.m4a *.mp4")])
-    if file_path:
-        print(f"File selected: {file_path}")
-    return file_path
+    file_paths = filedialog.askopenfilenames(title="Select audio files",
+                                             filetypes=[("Audio Files", "*.mp3 *.wav *.m4a *.mp4")])
+    if file_paths:
+        print(f"Files selected: {file_paths}")
+    return file_paths
 
 
 def choose_model():
@@ -39,10 +39,8 @@ def choose_model():
     return model_name
 
 
-def transcribe_audio(file_path, model_name):
-    # Load the model
-    model = whisper.load_model(model_name)
-
+def transcribe_audio(file_path, model, model_name, idx, total_files):
+    print(f"Starting transcription of {os.path.basename(file_path)}.")
     # Calculate the duration of the audio file
     audio = AudioSegment.from_file(file_path)
     audio_duration_ms = len(audio)
@@ -72,7 +70,6 @@ def transcribe_audio(file_path, model_name):
     print(f"Transcription: {transcription_text}")
     print(f"Audio duration: {audio_duration_formatted} (hh:mm:ss)")
     print(f"Number of symbols: {symbol_count}")
-    print(f"Model used: {model_name}")
     print(f"Time taken: {elapsed_time_formatted} (hh:mm:ss)")
 
     # Create a descriptive file name
@@ -84,14 +81,20 @@ def transcribe_audio(file_path, model_name):
         txt_file.write(transcription_text)
 
     print(f"Transcription saved to: {filename}")
+    print(
+        f"Transcription process in progress. {idx + 1} files done, {total_files - idx - 1} still left. Total files {total_files}.")
 
 
 if __name__ == "__main__":
-    # Select the audio file
-    audio_file_path = select_file()
-    if not audio_file_path:
-        print("No file selected. Exiting.")
+    # Select the audio files
+    audio_file_paths = select_files()
+    if not audio_file_paths:
+        print("No files selected. Exiting.")
     else:
         # Choose the model
         model_name = choose_model()
-        transcribe_audio(audio_file_path, model_name)
+        model = whisper.load_model(model_name)
+
+        total_files = len(audio_file_paths)
+        for idx, file_path in enumerate(audio_file_paths):
+            transcribe_audio(file_path, model, model_name, idx, total_files)
