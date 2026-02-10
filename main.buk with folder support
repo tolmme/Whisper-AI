@@ -1,0 +1,216 @@
+import whisper
+import time
+import os
+from pydub import AudioSegment
+from datetime import timedelta
+import tkinter as tk
+from tkinter import filedialog
+import watchdog.events
+from watchdog.observers.polling import PollingObserver
+import queue
+import threading
+
+
+def select_folder():
+    root = tk.Tk()
+    root.withdraw()  # Hide the root window
+    folder_path = filedialog.askdirectory(title="Select a folder for automatic transcription")
+    return folder_path
+
+
+def transcribe_audio(file_path, model, model_name):
+    print(f"Starting transcription of {os.path.basename(file_path)}.")
+    # Calculate the duration of the audio file
+    audio = AudioSegment.from_file(file_path)
+    audio_duration_ms = len(audio)
+    audio_duration = round(audio_duration_ms / 1000)  # Duration in seconds, rounded
+    audio_duration_formatted = str(timedelta(seconds=audio_duration))
+
+    # Start the timer
+    start_time = time.time()
+
+    # Load and transcribe the audio
+    result = model.transcribe(file_path)
+
+    # Stop the timer
+    end_time = time.time()
+
+    # Calculate the elapsed time
+    elapsed_time = round(end_time - start_time)
+    elapsed_time_formatted = str(timedelta(seconds=elapsed_time))
+
+    # Get the transcription text
+    transcription_text = result['text']
+
+    # Count the number of symbols (characters)
+    symbol_count = len(transcription_text)
+
+    # Print the transcription, audio duration, symbol count, model name, and elapsed time
+    print(f"Transcription: {transcription_text}")
+    print(f"Audio duration: {audio_duration_formatted} (hh:mm:ss)")
+    print(f"Number of symbols: {symbol_count}")
+    print(f"Time taken: {elapsed_time_formatted} (hh:mm:ss)")
+
+    # Create a descriptive file name
+    base_path, _ = os.path.splitext(file_path)
+    filename = f"{base_path}_duration-{audio_duration_formatted}_model-{model_name}_symbols-{symbol_count}_time-{elapsed_time_formatted}.txt"
+
+    # Save the transcription to a .txt file
+    with open(filename, "w") as txt_file:
+        txt_file.write(transcription_text)
+
+    print(f"Transcription saved to: {filename}")
+    print(f"Transcription process completed for {os.path.basename(file_path)}.\n")
+
+
+class TranscriptionStatus:
+    def __init__(self):
+        self.total_files_added = 0
+        self.finished_files = 0
+        self.lock = threading.Lock()
+
+    def add_file(self):
+        with self.lock:
+            self.total_files_added += 1
+            self.print_status()
+
+    def finish_file(self):
+        with self.lock:
+            self.finished_files += 1
+            self.print_status()
+
+    def print_status(self):
+        remaining = self.total_files_added - self.finished_files
+        percentage = (self.finished_files / self.total_files_added) * 100 if self.total_files_added else 0
+        print(f"Status Update: {self.finished_files} of {self.total_files_added} files have been transcribed ({percentage:.0f}%).")
+        print(f"{remaining} file(s) still left to transcribe.\n")
+
+    def all_transcribed(self):
+        with self.lock:
+            if self.finished_files == self.total_files_added and self.total_files_added != 0:
+                print("All files have been transcribed.\n")
+
+
+def transcribe_from_queue(model, model_name, task_queue, status):
+    while True:
+        file_path = task_queue.get()  # Get the next file from the queue
+        if file_path is None:  # Exit signal
+            break
+
+        print(f"Transcribing file {status.finished_files + 1} of {status.total_files_added}...")
+        transcribe_audio(file_path, model, model_name)
+        status.finish_file()  # Update status after finishing transcription
+        task_queue.task_done()  # Mark the task as done
+
+        # Check if all files have been transcribed
+        if status.finished_files == status.total_files_added:
+            status.all_transcribed()
+
+
+def transcribe_single_file(model, model_name):
+    root = tk.Tk()
+    root.withdraw()  # Hide the root window
+    file_paths = filedialog.askopenfilenames(
+        title="Select audio files",
+        filetypes=[
+            ("Audio Files", "*.mp3"),
+            ("Audio Files", "*.wav"),
+            ("Audio Files", "*.m4a"),
+            ("Audio Files", "*.mp4"),
+            ("All Files", "*.*")  # Optional: to show all files
+        ]
+    )
+    
+    if file_paths:
+        status = TranscriptionStatus()
+        task_queue = queue.Queue()
+        
+        # Enqueue all selected files
+        for file_path in file_paths:
+            print(f"Adding audio file to queue: {file_path}")
+            task_queue.put(file_path)
+            status.add_file()
+        
+        # Start a thread to process the queue
+        threading.Thread(target=transcribe_from_queue, args=(model, model_name, task_queue, status), daemon=True).start()
+        
+        # Wait until all tasks are done
+        task_queue.join()
+    else:
+        print("No files selected.")
+
+
+class FileEventHandler(watchdog.events.FileSystemEventHandler):
+    def __init__(self, model, model_name, task_queue, status):
+        self.model = model
+        self.model_name = model_name
+        self.task_queue = task_queue
+        self.status = status
+
+    def on_created(self, event):
+        if not event.is_directory and event.src_path.endswith(('.mp3', '.wav', '.m4a', '.mp4')):
+            print(f"Detected new file: {event.src_path}")
+            print(f"Adding audio file to queue: {event.src_path}")
+            self.task_queue.put(event.src_path)  # Add the file to the queue
+            self.status.add_file()
+        else:
+            print("Ignored non-audio file or directory.\n")
+
+
+def choose_model():
+    print("Choose a model:")
+    print("1) ENG Small, VRAM~2GB, Speed 6x, model name 'small.en'")
+    print("2) ENG Medium, VRAM~5GB, Speed 2x, model name 'medium.en'")
+    print("3) All Small (incl.RU), VRAM~2GB, Speed 6x, model name 'small'")
+    print("4) All Medium (incl.RU), VRAM~5GB, Speed 2x, model name 'medium'")
+    
+    model_choice = input("Enter the number of your choice: ")
+    model_mapping = {
+        '1': 'small.en',
+        '2': 'medium.en',
+        '3': 'small',
+        '4': 'medium'
+    }
+    
+    return model_mapping.get(model_choice, 'medium')  # Default to 'medium' if invalid choice
+
+
+if __name__ == "__main__":
+    # Ask the user what they want to do
+    choice = input("Do you want to (1) transcribe a single audio file or (2) set up auto transcription for a folder? (Enter 1 or 2): ")
+
+    # Choose the model
+    model_name = choose_model()
+    model = whisper.load_model(model_name)
+
+    if choice == '1':
+        transcribe_single_file(model, model_name)
+    elif choice == '2':
+        # Ask the user to select a folder to watch
+        folder_to_watch = select_folder()
+        print(f"Watching folder: {folder_to_watch}")  # Confirm the folder path
+        if not folder_to_watch:
+            print("No folder selected. Exiting.")
+            exit()
+
+        task_queue = queue.Queue()  # Create a queue for transcription tasks
+        status = TranscriptionStatus()
+
+        event_handler = FileEventHandler(model, model_name, task_queue, status)
+        observer = PollingObserver()
+        observer.schedule(event_handler, folder_to_watch, recursive=False)
+        observer.start()
+
+        # Start a thread to process the queue
+        threading.Thread(target=transcribe_from_queue, args=(model, model_name, task_queue, status), daemon=True).start()
+
+        print(f"Watching folder: {folder_to_watch} for new audio files...\n")
+        
+        try:
+            while True:
+                time.sleep(1)  # Keep the script running without printing file lists
+        except KeyboardInterrupt:
+            observer.stop()
+        observer.join()
+    else:
+        print("Invalid choice. Exiting.")

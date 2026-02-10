@@ -341,11 +341,12 @@ class FileEventHandler(watchdog.events.FileSystemEventHandler):
 
 def choose_local_model():
     print("Choose a local Whisper model:")
-    print("1) ENG Small (English-only), model name 'small.en'")
-    print("2) ENG Medium (English-only), model name 'medium.en'")
-    print("3) Multilingual Small (incl. RU), model name 'small'")
-    print("4) Multilingual Medium (incl. RU), model name 'medium' [recommended]")
-    print("5) Multilingual Large-v3 (best quality, slower), model name 'large-v3'")
+    print("1) ENG Small (English-only), model 'small.en', RAM ~2 GB")
+    print("2) ENG Medium (English-only), model 'medium.en', RAM ~5 GB")
+    print("3) Multilingual Small (incl. RU), model 'small', RAM ~2 GB")
+    print("4) Multilingual Medium (incl. RU), model 'medium' [recommended], RAM ~5 GB")
+    print("5) Multilingual Large-v3 (best quality, slower), model 'large-v3', RAM ~9-10 GB")
+    print("RAM values are approximate and depend on backend/device (MLX/CUDA/CPU).")
     print("For Russian language, choose 3/4/5. Do NOT use '.en' models.")
     
     model_choice = input("Enter the number of your choice: ")
@@ -491,17 +492,19 @@ def resolve_mlx_repo(model_name):
         return os.getenv("MLX_WHISPER_REPO")
 
     model_mapping = {
-        "tiny.en": "mlx-community/whisper-tiny.en",
-        "tiny": "mlx-community/whisper-tiny",
-        "base.en": "mlx-community/whisper-base.en",
-        "base": "mlx-community/whisper-base",
-        "small.en": "mlx-community/whisper-small.en",
-        "small": "mlx-community/whisper-small",
-        "medium.en": "mlx-community/whisper-medium.en",
-        "medium": "mlx-community/whisper-medium",
-        "large-v3": "mlx-community/whisper-large-v3-turbo",
+        "tiny.en": "mlx-community/whisper-tiny.en-mlx",
+        "tiny": "mlx-community/whisper-tiny-mlx",
+        "base.en": "mlx-community/whisper-base.en-mlx",
+        "base": "mlx-community/whisper-base-mlx",
+        "small.en": "mlx-community/whisper-small.en-mlx",
+        "small": "mlx-community/whisper-small-mlx",
+        "medium.en": "mlx-community/whisper-medium.en-mlx",
+        "medium": "mlx-community/whisper-medium-mlx",
+        "large-v2": "mlx-community/whisper-large-v2-mlx",
+        "large-v3": "mlx-community/whisper-large-v3-mlx",
+        "large": "mlx-community/whisper-large-v3-mlx",
     }
-    return model_mapping.get(model_name, f"mlx-community/whisper-{model_name}")
+    return model_mapping.get(model_name, f"mlx-community/whisper-{model_name}-mlx")
 
 
 def create_local_transcribe_function(model_name, include_timestamps):
