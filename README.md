@@ -1,50 +1,110 @@
-# Whisper AI Transcription Project
+# Whisper AI Transcription (Local + OpenAI API)
 
-This project utilizes OpenAI's Whisper to transcribe audio files. It now supports batch processing, allowing users to transcribe multiple files at once and providing real-time updates on the transcription progress.
+Cross-platform transcription tool with:
+- Local transcription (auto-optimized backend by platform)
+- Optional timestamps (segment + word level)
+- Optional speaker labels (OpenAI diarization model)
+- Single-file and watched-folder processing
 
-## Features
-- User-friendly interface for selecting multiple audio files for transcription.
-- Transcription of audio files using various Whisper models.
-- Real-time progress updates during transcription, indicating the number of files processed and remaining.
-- Calculation of audio duration and transcription time.
-- Saving transcriptions to text files with detailed filenames.
+## What is implemented
 
-### Requirements
-- Python 3.x
-- `whisper`
-- `pydub`
-- `tkinter` (for file dialog on macOS)
+- Local mode auto-selects backend:
+  - macOS: `mlx-whisper` (Metal) if installed
+  - other systems: `openai-whisper` on best device (`cuda` -> `mps` -> `cpu`)
+- On macOS, if `mlx-whisper` is missing, script asks to install it automatically.
+- OpenAI API mode supports:
+  - `gpt-4o-transcribe-diarize` (speaker split)
+  - `gpt-4o-transcribe`
+  - `gpt-4o-mini-transcribe`
+- Optional timestamps toggle (`y/n`) per run.
+- Progress bar is shown in local mode (per file progress via Whisper/MLX internals).
+- Russian supported via multilingual models (`small`, `medium`, `large-v3`).
 
-### Installation
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/your-username/whisper-ai-transcription.git
-   cd whisper-ai-transcription
-   ```
+## Requirements
 
-2. Install the required Python packages:
-   ```bash
-   pip install whisper pydub
-   ```
+- Python 3.11+
+- `ffmpeg`
+- macOS file dialog support (`tkinter`)
 
-3. Install `ffmpeg`:
-   - **macOS**:
-     ```bash
-     brew install ffmpeg
-     ```
+Python packages:
+- Required: `pydub`, `watchdog`
+- Local Whisper fallback/CUDA path: `openai-whisper`, `torch`
+- macOS optimized path: `mlx-whisper` (optional, but recommended)
+- OpenAI API mode: `openai` (optional)
 
-### Usage
-1. Run the script:
-   ```bash
-   python transcribe.py
-   ```
+## Installation
 
-2. Follow the on-screen instructions to select an audio file and choose a Whisper model.
+```bash
+git clone https://github.com/tolmme/Whisper-AI.git
+cd Whisper-AI
+python3 -m venv venv
+source venv/bin/activate
+pip install -U pip
+pip install pydub watchdog openai-whisper torch
+```
 
-### Batch Transcription
+Install ffmpeg:
+- macOS: `brew install ffmpeg`
+- Ubuntu/Debian: `sudo apt-get install ffmpeg`
+- Windows: install ffmpeg and add it to `PATH`
 
-- The application now supports selecting multiple audio files for simultaneous transcription.
-- Users will receive progress updates after each file is processed, which helps in tracking the transcription status especially when dealing with large batches of audio files.
+Optional packages:
 
-### License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+```bash
+# macOS optimized local backend
+pip install -U mlx-whisper
+
+# OpenAI API mode
+pip install -U openai
+```
+
+## Usage
+
+```bash
+source venv/bin/activate
+python main.py
+```
+
+Then choose:
+1. Single file mode or watched folder mode
+2. Timestamps enabled/disabled
+3. Source:
+   - Local (offline, auto backend)
+   - OpenAI API
+4. Model
+
+## Russian language models
+
+For Russian, use multilingual models:
+- `small`
+- `medium` (recommended balance)
+- `large-v3` (best quality, slower)
+
+Do not use `.en` models for Russian (`small.en`, `medium.en` are English-only).
+
+## Output files
+
+Always saved:
+- Main transcript text file (with duration/model/symbol/time in filename)
+
+Saved only when timestamps are enabled:
+- Segment timestamps: `*_timestamps_model-...txt`
+- Word timestamps: `*_words_model-...txt` (if available)
+- Full raw result JSON: `*_full_result_model-...json`
+
+If OpenAI diarization model is used, speaker labels are included in timestamp files.
+
+## Environment variables
+
+- `OPENAI_API_KEY` - required for OpenAI API mode
+- `WHISPER_CPU_THREADS` - optional CPU thread override for local CPU mode
+- `MLX_WHISPER_REPO` - optional custom MLX model repo override
+
+## Notes
+
+- OpenAI API mode currently does not expose detailed per-segment server progress; local backends do show progress bars.
+- Batch progress in queue mode is shown as `X of Y files`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
