@@ -5,6 +5,7 @@ Cross-platform transcription tool with:
 - Optional timestamps (segment + word level)
 - Optional speaker labels (OpenAI diarization model)
 - Single-file and watched-folder processing
+- Desktop UI (`tkinter`) for queue-based transcription
 
 ## What is implemented
 
@@ -27,7 +28,7 @@ Cross-platform transcription tool with:
 - macOS file dialog support (`tkinter`)
 
 Python packages:
-- Required: `pydub`, `watchdog`
+- Required: `pydub`, `watchdog`, `tkinterdnd2`
 - Local Whisper fallback/CUDA path: `openai-whisper`, `torch`
 - macOS optimized path: `mlx-whisper` (optional, but recommended)
 - OpenAI API mode: `openai` (optional)
@@ -40,7 +41,7 @@ cd Whisper-AI
 python3 -m venv venv
 source venv/bin/activate
 pip install -U pip
-pip install pydub watchdog openai-whisper torch
+pip install pydub watchdog tkinterdnd2 openai-whisper torch
 ```
 
 Install ffmpeg:
@@ -60,6 +61,15 @@ pip install -U openai
 
 ## Usage
 
+GUI mode (recommended):
+
+```bash
+source venv/bin/activate
+python app_gui.py
+```
+
+CLI mode:
+
 ```bash
 source venv/bin/activate
 python main.py
@@ -72,6 +82,16 @@ Then choose:
    - Local (offline, auto backend)
    - OpenAI API
 4. Model
+
+## GUI features
+
+- Add files / add folder with audio files
+- Drag and drop files or folders into the queue
+- Queue view with statuses (`Queued`, `Processing`, `Done`, `Error`)
+- Start / Stop-after-current controls
+- Queue progress bar + current file indicator
+- Real-time log panel
+- Open selected file folder
 
 ## Russian language models
 

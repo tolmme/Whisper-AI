@@ -1,0 +1,32 @@
+#!/bin/zsh
+LOG_FILE="$HOME/Library/Logs/WhisperTranscriber.launcher.log"
+{
+  echo "===== $(date '+%Y-%m-%d %H:%M:%S') ====="
+  echo "Starting launcher"
+} >> "$LOG_FILE"
+exec >> "$LOG_FILE" 2>&1
+
+PROJECT_DIR="/Users/max/PycharmProjects/Whisper AI"
+cd "$PROJECT_DIR" || { echo "Failed to cd: $PROJECT_DIR"; exit 1; }
+
+# Finder-launched apps often miss Homebrew path entries.
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+echo "PATH: $PATH"
+
+PYTHON_BIN="$PROJECT_DIR/venv/bin/python"
+if [ ! -x "$PYTHON_BIN" ]; then
+  PYTHON_BIN="/usr/bin/python3"
+fi
+
+echo "Using python: $PYTHON_BIN"
+echo "Current arch: $(uname -m)"
+ARM_CAPABLE=$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)
+echo "ARM capable: $ARM_CAPABLE"
+
+if [[ "$ARM_CAPABLE" == "1" ]]; then
+  echo "Launching with arch -arm64"
+  exec /usr/bin/arch -arm64 "$PYTHON_BIN" "$PROJECT_DIR/app_gui.py"
+else
+  echo "Launching with native arch"
+  exec "$PYTHON_BIN" "$PROJECT_DIR/app_gui.py"
+fi

@@ -3,11 +3,20 @@ import importlib
 import importlib.util
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
 import time
 from datetime import timedelta
+
+# Finder-launched apps on macOS may miss Homebrew paths.
+if sys.platform == "darwin":
+    _path_parts = os.environ.get("PATH", "").split(os.pathsep) if os.environ.get("PATH") else []
+    for _dir in ("/opt/homebrew/bin", "/usr/local/bin"):
+        if _dir not in _path_parts:
+            _path_parts.insert(0, _dir)
+    os.environ["PATH"] = os.pathsep.join(_path_parts)
 
 import tkinter as tk
 import watchdog.events
@@ -21,7 +30,87 @@ except ImportError:
     torch = None
 
 
-AUDIO_EXTENSIONS = (".mp3", ".wav", ".m4a", ".mp4")
+AUDIO_EXTENSIONS = (".mp3", ".wav", ".m4a", ".mp4", ".aac")
+
+
+def _candidate_binary_paths(binary_name):
+    candidates = []
+
+    env_key = "FFMPEG_BINARY" if binary_name == "ffmpeg" else "FFPROBE_BINARY"
+    env_value = os.getenv(env_key)
+    if env_value:
+        candidates.append(env_value)
+
+    found = shutil.which(binary_name)
+    if found:
+        candidates.append(found)
+
+    if sys.platform == "darwin":
+        candidates.extend(
+            [
+                f"/opt/homebrew/bin/{binary_name}",
+                f"/usr/local/bin/{binary_name}",
+            ]
+        )
+    elif os.name == "nt":
+        candidates.extend(
+            [
+                f"C:\\ffmpeg\\bin\\{binary_name}.exe",
+                f"C:\\Program Files\\ffmpeg\\bin\\{binary_name}.exe",
+                f"C:\\Program Files (x86)\\ffmpeg\\bin\\{binary_name}.exe",
+            ]
+        )
+
+    unique_candidates = []
+    for candidate in candidates:
+        if candidate and candidate not in unique_candidates:
+            unique_candidates.append(candidate)
+    return unique_candidates
+
+
+def _resolve_binary(binary_name):
+    for candidate in _candidate_binary_paths(binary_name):
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def configure_audio_binaries():
+    ffmpeg_bin = _resolve_binary("ffmpeg")
+    ffprobe_bin = _resolve_binary("ffprobe")
+
+    path_parts = os.environ.get("PATH", "").split(os.pathsep) if os.environ.get("PATH") else []
+    for binary_path in (ffmpeg_bin, ffprobe_bin):
+        if not binary_path:
+            continue
+        binary_dir = os.path.dirname(binary_path)
+        if binary_dir and binary_dir not in path_parts:
+            path_parts.insert(0, binary_dir)
+    if path_parts:
+        os.environ["PATH"] = os.pathsep.join(path_parts)
+
+    if ffmpeg_bin:
+        AudioSegment.converter = ffmpeg_bin
+        os.environ["FFMPEG_BINARY"] = ffmpeg_bin
+
+    if ffprobe_bin:
+        # pydub checks FFPROBE_BINARY and can also use AudioSegment.ffprobe if present.
+        setattr(AudioSegment, "ffprobe", ffprobe_bin)
+        os.environ["FFPROBE_BINARY"] = ffprobe_bin
+
+    return ffmpeg_bin, ffprobe_bin
+
+
+def ensure_audio_binaries():
+    ffmpeg_bin, ffprobe_bin = configure_audio_binaries()
+    if ffmpeg_bin and ffprobe_bin:
+        return ffmpeg_bin, ffprobe_bin
+
+    raise RuntimeError(
+        "ffmpeg/ffprobe not found. Install ffmpeg and ensure PATH includes its bin directory.\n"
+        "macOS: brew install ffmpeg\n"
+        "Windows: install ffmpeg and add <ffmpeg>/bin to PATH."
+    )
 
 
 def select_folder():
@@ -129,6 +218,7 @@ def save_transcription_outputs(file_path, model_name, result, audio_duration, el
 
 def transcribe_audio_local_whisper(file_path, model, model_name, include_timestamps, backend_label):
     print(f"Starting local transcription of {os.path.basename(file_path)}.")
+    ensure_audio_binaries()
     audio = AudioSegment.from_file(file_path)
     audio_duration = len(audio) / 1000
     start_time = time.time()
@@ -152,6 +242,7 @@ def transcribe_audio_local_whisper(file_path, model, model_name, include_timesta
 
 def transcribe_audio_local_mlx(file_path, mlx_transcribe, mlx_repo, model_name, include_timestamps):
     print(f"Starting local transcription of {os.path.basename(file_path)}.")
+    ensure_audio_binaries()
     audio = AudioSegment.from_file(file_path)
     audio_duration = len(audio) / 1000
     start_time = time.time()
@@ -211,6 +302,7 @@ def transcribe_audio_openai(file_path, model_name, include_timestamps):
     print("OpenAI API mode: detailed per-segment progress is not available from the server.")
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY is not set. Export your API key before using OpenAI mode.")
+    ensure_audio_binaries()
 
     try:
         from openai import OpenAI
@@ -300,6 +392,7 @@ def transcribe_single_file(transcribe_function):
             ("Audio Files", "*.wav"),
             ("Audio Files", "*.m4a"),
             ("Audio Files", "*.mp4"),
+            ("Audio Files", "*.aac"),
             ("All Files", "*.*")  # Optional: to show all files
         ]
     )
@@ -413,17 +506,23 @@ def install_python_package(package_name):
         return False
 
 
-def ensure_mlx_whisper_for_macos():
+def ensure_mlx_whisper_for_macos(interactive_prompt=True, auto_install=None):
     if sys.platform != "darwin":
         return False
     if has_module("mlx_whisper"):
         return True
 
     print("macOS detected: mlx-whisper is not installed.")
-    should_install = ask_yes_no(
-        "Install mlx-whisper now for faster local transcription on Mac? (Y/n): ",
-        default_yes=True,
-    )
+    if auto_install is not None:
+        should_install = auto_install
+    elif interactive_prompt:
+        should_install = ask_yes_no(
+            "Install mlx-whisper now for faster local transcription on Mac? (Y/n): ",
+            default_yes=True,
+        )
+    else:
+        should_install = False
+
     if not should_install:
         print("mlx-whisper installation skipped. Falling back to openai-whisper.")
         return False
@@ -507,9 +606,17 @@ def resolve_mlx_repo(model_name):
     return model_mapping.get(model_name, f"mlx-community/whisper-{model_name}-mlx")
 
 
-def create_local_transcribe_function(model_name, include_timestamps):
+def create_local_transcribe_function(
+    model_name,
+    include_timestamps,
+    interactive_prompt=True,
+    auto_install_mlx=None,
+):
     if sys.platform == "darwin":
-        if ensure_mlx_whisper_for_macos():
+        if ensure_mlx_whisper_for_macos(
+            interactive_prompt=interactive_prompt,
+            auto_install=auto_install_mlx,
+        ):
             from mlx_whisper import transcribe as mlx_transcribe
 
             mlx_repo = resolve_mlx_repo(model_name)
